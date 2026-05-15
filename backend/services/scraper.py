@@ -1,6 +1,7 @@
 import requests
 import feedparser
 import re
+import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import datetime, date
 from typing import List, Dict
@@ -191,7 +192,14 @@ class NewsScraper:
     def _clean_text(self, text: str) -> str:
         if not text:
             return ''
+        text = unicodedata.normalize('NFKC', text)
+        text = text.replace('\u2013', '-').replace('\u2014', '-')
+        text = text.replace('\u2018', "'").replace('\u2019', "'")
+        text = text.replace('\u201c', '"').replace('\u201d', '"')
+        text = text.replace('\u2026', '...')
+        text = text.replace('\u00a0', ' ')
         text = re.sub(r'<[^>]+>', '', text)
+        text = re.sub(r'[^\x20-\x7E\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]', ' ', text)
         text = re.sub(r'\s+', ' ', text)
         return text.strip()[:5000]
 

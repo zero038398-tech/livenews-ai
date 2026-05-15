@@ -16,6 +16,11 @@ const categoryColors: Record<string, string> = {
 function cleanText(text: string): string {
   if (!text) return ''
   let cleaned = text
+  cleaned = cleaned.replace(/[\u2013\u2014]/g, '-')
+  cleaned = cleaned.replace(/[\u2018\u2019]/g, "'")
+  cleaned = cleaned.replace(/[\u201c\u201d]/g, '"')
+  cleaned = cleaned.replace(/\u2026/g, '...')
+  cleaned = cleaned.replace(/\u00a0/g, ' ')
   cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
   cleaned = cleaned.replace(/&#\d+;/g, '')
   cleaned = cleaned.replace(/&[a-zA-Z]+;/g, match => {
@@ -26,6 +31,7 @@ function cleanText(text: string): string {
     }
     return entities[match] || match
   })
+  cleaned = cleaned.replace(/[^\x20-\x7E\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g, ' ')
   cleaned = cleaned.replace(/\s{2,}/g, ' ')
   return cleaned.trim()
 }
@@ -75,6 +81,8 @@ function isChineseSource(news: News): boolean {
 function isTitleHallucinated(title: string, titleZh: string): boolean {
   if (!title || !titleZh || title === titleZh) return false
   const zhChars = (titleZh.match(/[\u4e00-\u9fff]/g) || []).length
+  const garbledChars = (titleZh.match(/[^\x20-\x7E\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/g) || []).length
+  if (garbledChars > zhChars) return false
   const enWords = title.split(/\s+/).length
   if (enWords > 0 && zhChars > enWords * 4) return true
   if (titleZh.split('\n').length > 2) return true
