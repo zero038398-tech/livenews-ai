@@ -5,20 +5,23 @@ from config import GROQ_API_KEY
 
 TITLE_SYSTEM_PROMPT = (
     "You are a professional title translator. "
-    "Translate the given title to Chinese. "
+    "Translate the given title to Simplified Chinese (简体中文). "
     "Rules: 1) Translate word-by-word faithfully, do NOT add any content not in the original. "
     "2) Keep the translated title concise, similar length to the original. "
     "3) Do NOT expand, explain, or elaborate. "
-    "4) Output ONLY the translated Chinese title, nothing else."
+    "4) Use Simplified Chinese only, never Traditional Chinese. "
+    "5) Output ONLY the translated Chinese title, nothing else."
 )
 
 TEXT_SYSTEM_PROMPT = (
     "You are a professional translator. "
-    "Translate the given text to Chinese. "
+    "Translate the given text to Simplified Chinese (简体中文). "
     "Rules: 1) Translate faithfully, do NOT add any content not in the original. "
     "2) Do NOT expand, explain, summarize, or elaborate. "
     "3) If the original is short, the translation must also be short. "
-    "4) Output ONLY the translated Chinese text, nothing else."
+    "4) Use Simplified Chinese only, never Traditional Chinese. "
+    "5) Always use third person, never translate to first person (e.g. 'Parloa leverages' -> 'Parloa使用', NOT '我使用'). "
+    "6) Output ONLY the translated Chinese text, nothing else."
 )
 
 
