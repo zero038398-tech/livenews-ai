@@ -226,7 +226,7 @@ NEWS_SOURCES = {
     },
     'twitter_jimfan': {
         'name': 'Jim Fan Twitter/X',
-        'url': 'https://nitter.privacydev.net/i/user/743112768825516032/rss',
+        'url': 'https://rsshub.app/twitter/user/jimfan_ml',
         'type': 'twitter',
         'category': 'tool',
         'trust_level': 'A',
@@ -235,7 +235,7 @@ NEWS_SOURCES = {
     },
     'twitter_karpathy': {
         'name': 'Andrej Karpathy Twitter/X',
-        'url': 'https://nitter.privacydev.net/i/user/46020769/rss',
+        'url': 'https://rsshub.app/twitter/user/karpathy',
         'type': 'twitter',
         'category': 'tool',
         'trust_level': 'S',
@@ -244,7 +244,7 @@ NEWS_SOURCES = {
     },
     'twitter_swyx': {
         'name': 'swyx Twitter/X',
-        'url': 'https://nitter.privacydev.net/i/user/113385265/rss',
+        'url': 'https://rsshub.app/twitter/user/swyx',
         'type': 'twitter',
         'category': 'industry',
         'trust_level': 'A',
@@ -253,7 +253,7 @@ NEWS_SOURCES = {
     },
     'twitter_ylecun': {
         'name': 'Yann LeCun Twitter/X',
-        'url': 'https://nitter.privacydev.net/i/user/2169293545/rss',
+        'url': 'https://rsshub.app/twitter/user/ylecun',
         'type': 'twitter',
         'category': 'academic',
         'trust_level': 'S',

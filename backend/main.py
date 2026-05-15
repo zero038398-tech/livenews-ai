@@ -199,7 +199,7 @@ def get_news(
             "categories": [
                 {"value": "all", "label": "全部", "emoji": "📋"},
                 {"value": "chip", "label": "AI芯片动态", "emoji": "🔴"},
-                {"value": "tool", "label": "工具推荐", "emoji": "🟢"},
+                {"value": "tool", "label": "工具与实战", "emoji": "🟢"},
                 {"value": "industry", "label": "行业动态", "emoji": "🔵"},
                 {"value": "academic", "label": "学术精选", "emoji": "🟣"}
             ]
@@ -230,7 +230,7 @@ def generate_daily_summary(
     category_labels = {
         "chip": "AI芯片动态",
         "industry": "行业动态",
-        "tool": "工具推荐",
+        "tool": "工具与实战",
         "academic": "学术精选"
     }
 
@@ -271,7 +271,7 @@ def get_categories():
     return [
         {"value": "all", "label": "全部", "emoji": "📋"},
         {"value": "chip", "label": "AI芯片动态", "emoji": "🔴"},
-        {"value": "tool", "label": "工具推荐", "emoji": "🟢"},
+        {"value": "tool", "label": "工具与实战", "emoji": "🟢"},
         {"value": "industry", "label": "行业动态", "emoji": "🔵"},
         {"value": "academic", "label": "学术精选", "emoji": "🟣"}
     ]
