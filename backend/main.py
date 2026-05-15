@@ -52,18 +52,21 @@ def fetch_and_translate():
                 title_zh = item['title']
                 translated_text = item.get('content', '')
             else:
-                title_zh = item['title']
+                title_zh = ''
                 translated_text = ''
                 try:
                     if item.get('title'):
                         title_zh = translator.translate_title(item['title'])
-                        time.sleep(1)
+                        time.sleep(3)
                     if item.get('content'):
                         translated_text = translator.translate_text(item['content'][:2000])
-                        time.sleep(1)
+                        time.sleep(3)
                 except Exception as e:
                     print(f"  Translation error for '{item['title'][:30]}...': {e}")
+
+                if not title_zh:
                     title_zh = item['title']
+                if not translated_text:
                     translated_text = ''
 
             news = News(
@@ -120,10 +123,10 @@ def translate_untranslated_news():
                 else:
                     if news.title:
                         news.title_zh = translator.translate_title(news.title)
-                        time.sleep(1)
+                        time.sleep(3)
                     if news.original_text:
                         news.translated_text = translator.translate_text(news.original_text[:2000])
-                        time.sleep(1)
+                        time.sleep(3)
                 count += 1
                 if count % 5 == 0:
                     db.commit()
