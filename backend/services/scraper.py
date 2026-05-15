@@ -20,6 +20,11 @@ AI_KEYWORDS = [
     'fine-tun', 'rag', 'mcp', 'agent', 'model', 'inference',
     'training', 'accelerator', 'semiconductor', 'tsmc', 'datacenter',
     '推理', '训练', '算力', '芯片', '开源', '智能',
+    'ollama', 'lmstudio', 'crewai', 'langchain', 'autogen', 'vllm',
+    'cursor', 'windsurf', 'codeium', 'claude api', 'openai api',
+    'local llm', 'self-hosted', 'quantization', 'fine-tuning',
+    'prompt engineering', 'rag', 'vector database', 'embedding',
+    'multi-agent', 'agentic', 'workflow', 'automation',
 ]
 
 CHIP_COMPANY_KEYWORDS = [
@@ -29,6 +34,17 @@ CHIP_COMPANY_KEYWORDS = [
     '芯片', 'GPU', '算力', '推理', '训练', '数据中心', '硬件',
     'cerebras', 'groq', 'samba', 'tenstorrent', 'blackwell', 'gaudi',
     'mi300', 'mi400', 'colossus', 'quantum', 'edge ai',
+]
+
+ENGINEER_EXPERIENCE_KEYWORDS = [
+    'how we', 'how i', 'lessons learned', 'tips', 'tricks', 'best practice',
+    'tutorial', 'guide', 'walkthrough', 'benchmark', 'performance',
+    'optimization', 'speed up', 'faster', 'compare', 'comparison',
+    'setup', 'install', 'deploy', 'production', 'real-world',
+    'use case', 'case study', 'experience', 'experiment',
+    'solved', 'solution', 'problem', 'issue', 'bug', 'fix',
+    'production', 'scale', 'cost', 'latency', 'throughput',
+    '提示', '教程', '经验', '实践', '实战', '案例',
 ]
 
 
@@ -71,6 +87,20 @@ class NewsScraper:
 
         if item.get('url') and 'arxiv' in item.get('url', ''):
             score += 1
+
+        content_type = source.get('content_type', '')
+        if content_type == 'social':
+            score += 4
+        elif content_type == 'community':
+            score += 3
+        elif content_type == 'blog':
+            score += 2
+        elif content_type == 'video':
+            score += 2
+
+        for kw in ENGINEER_EXPERIENCE_KEYWORDS:
+            if self._keyword_match(text, kw):
+                score += 2
 
         return score
 
@@ -165,9 +195,21 @@ class NewsScraper:
         all_news = []
         seen_urls = set()
 
-        for source_key in NEWS_SOURCES.keys():
-            if source_key == 'arxiv':
+        for source_key, source in NEWS_SOURCES.items():
+            source_type = source.get('type', 'rss')
+
+            if source_type == 'arxiv':
                 items = self.scrape_arxiv()
+            elif source_type == 'github_release':
+                items = self.scrape_github_release(source_key)
+            elif source_type == 'github_trending':
+                items = self.scrape_github_trending(source_key)
+            elif source_type == 'twitter':
+                items = self.scrape_twitter(source_key)
+            elif source_type == 'reddit':
+                items = self.scrape_reddit(source_key)
+            elif source_type == 'youtube':
+                items = self.scrape_youtube(source_key)
             else:
                 items = self.scrape_rss(source_key)
 
@@ -188,6 +230,254 @@ class NewsScraper:
 
         print(f"Scraped {len(all_news)} AI news, selected top {len(selected)} by relevance")
         return selected
+
+    def scrape_github_release(self, source_key: str) -> List[Dict]:
+        source = NEWS_SOURCES.get(source_key)
+        if not source:
+            return []
+
+        try:
+            resp = self.session.get(source['url'], timeout=15)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+            items = []
+
+            for entry in feed.entries[:10]:
+                title = self._clean_text(entry.get('title', ''))
+                content = self._clean_text(entry.get('summary', entry.get('description', '')))
+                url = entry.get('link', '')
+
+                if not title:
+                    continue
+
+                if 'release' not in title.lower() and 'release' not in content.lower():
+                    title = f"[Release] {title}"
+
+                cat_info = self._categorize(title + ' ' + content)
+
+                item = {
+                    'title': title,
+                    'content': content[:3000] if content else title,
+                    'url': url,
+                    'published': self._parse_date(entry.get('published', '')),
+                    'source': source['name'],
+                    'category': cat_info,
+                    'trust_level': source['trust_level']
+                }
+                items.append(item)
+
+            return items
+        except Exception as e:
+            print(f"Error scraping {source_key}: {e}")
+            return []
+
+    def scrape_github_trending(self, source_key: str) -> List[Dict]:
+        source = NEWS_SOURCES.get(source_key)
+        if not source:
+            return []
+
+        try:
+            resp = self.session.get(source['url'], timeout=15)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+            items = []
+
+            for entry in feed.entries[:15]:
+                title = self._clean_text(entry.get('title', ''))
+                content = self._clean_text(entry.get('summary', entry.get('description', '')))
+                url = entry.get('link', '')
+
+                if not title:
+                    continue
+
+                if not self._is_ai_related(title + ' ' + content):
+                    continue
+
+                cat_info = self._categorize(title + ' ' + content)
+
+                item = {
+                    'title': f"[Trending] {title}",
+                    'content': content[:3000] if content else title,
+                    'url': url,
+                    'published': self._parse_date(entry.get('published', '')),
+                    'source': source['name'],
+                    'category': cat_info,
+                    'trust_level': source['trust_level']
+                }
+                items.append(item)
+
+            return items
+        except Exception as e:
+            print(f"Error scraping {source_key}: {e}")
+            return []
+
+    def scrape_twitter(self, source_key: str) -> List[Dict]:
+        source = NEWS_SOURCES.get(source_key)
+        if not source:
+            return []
+
+        try:
+            resp = self.session.get(source['url'], timeout=15)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+            items = []
+
+            for entry in feed.entries[:10]:
+                title = self._clean_text(entry.get('title', ''))
+                content = self._clean_text(entry.get('summary', entry.get('description', '')))
+
+                try:
+                    links = entry.get('links', [])
+                    url = ''
+                    for link in links:
+                        if link.get('type', '').startswith('text/html') or link.get('rel') == 'alternate':
+                            url = link.get('href', '')
+                            break
+                    if not url:
+                        url = entry.get('id', '')
+                except:
+                    url = entry.get('link', '')
+
+                if not title:
+                    continue
+
+                if title.startswith('http'):
+                    continue
+
+                full_text = title + ' ' + content
+
+                if not self._is_ai_related(full_text):
+                    continue
+
+                cat_info = self._categorize(full_text)
+
+                item = {
+                    'title': f"[Tweet] {title}",
+                    'content': content[:3000] if content else title,
+                    'url': url,
+                    'published': self._parse_date(entry.get('published', '')),
+                    'source': source['name'],
+                    'category': cat_info,
+                    'trust_level': source['trust_level']
+                }
+                items.append(item)
+
+            return items
+        except Exception as e:
+            print(f"Error scraping {source_key}: {e}")
+            return []
+
+    def scrape_reddit(self, source_key: str) -> List[Dict]:
+        source = NEWS_SOURCES.get(source_key)
+        if not source:
+            return []
+
+        try:
+            resp = self.session.get(source['url'], timeout=15)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+            items = []
+
+            for entry in feed.entries[:15]:
+                title = self._clean_text(entry.get('title', ''))
+                content = self._clean_text(entry.get('summary', entry.get('description', '')))
+                url = entry.get('link', '')
+
+                if not title:
+                    continue
+
+                if title.startswith('http'):
+                    continue
+
+                full_text = title + ' ' + content
+
+                if not self._is_ai_related(full_text):
+                    continue
+
+                cat_info = self._categorize(full_text)
+
+                item = {
+                    'title': f"[Reddit] {title}",
+                    'content': content[:3000] if content else title,
+                    'url': url,
+                    'published': self._parse_date(entry.get('published', '')),
+                    'source': source['name'],
+                    'category': cat_info,
+                    'trust_level': source['trust_level']
+                }
+                items.append(item)
+
+            return items
+        except Exception as e:
+            print(f"Error scraping {source_key}: {e}")
+            return []
+
+    def scrape_youtube(self, source_key: str) -> List[Dict]:
+        source = NEWS_SOURCES.get(source_key)
+        if not source:
+            return []
+
+        try:
+            resp = self.session.get(source['url'], timeout=15)
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
+            items = []
+
+            for entry in feed.entries[:10]:
+                title = self._clean_text(entry.get('title', ''))
+
+                try:
+                    media_group = entry.get('media_group', {})
+                    media_content = media_group.get('media_content', [])
+                    description = ''
+                    for mc in media_content:
+                        description = mc.get('description', '')
+                        if description:
+                            break
+
+                    if not description:
+                        media_description = media_group.get('media_description', {})
+                        description = media_description.get('value', '')
+                except:
+                    description = entry.get('summary', entry.get('description', ''))
+
+                content = self._clean_text(description)
+
+                video_id = ''
+                try:
+                    links = entry.get('links', [])
+                    for link in links:
+                        if 'youtube.com/watch' in link.get('href', ''):
+                            video_id = link.get('href', '').split('v=')[-1] if 'v=' in link.get('href', '') else ''
+                            break
+                except:
+                    pass
+
+                if not title:
+                    continue
+
+                full_text = title + ' ' + content
+
+                if not self._is_ai_related(full_text):
+                    continue
+
+                cat_info = self._categorize(full_text)
+
+                item = {
+                    'title': f"[Video] {title}",
+                    'content': content[:3000] if content else title,
+                    'url': entry.get('link', f"https://youtube.com/watch?v={video_id}"),
+                    'published': self._parse_date(entry.get('published', '')),
+                    'source': source['name'],
+                    'category': cat_info,
+                    'trust_level': source['trust_level']
+                }
+                items.append(item)
+
+            return items
+        except Exception as e:
+            print(f"Error scraping {source_key}: {e}")
+            return []
 
     def _clean_text(self, text: str) -> str:
         if not text:
