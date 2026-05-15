@@ -233,6 +233,52 @@ def trigger_translate():
     return {"success": True, "message": "Translation triggered in background"}
 
 
+def retranslate_all_news():
+    print(f"[{datetime.now()}] Starting re-translation of all news...")
+    try:
+        db = next(get_db())
+        all_news = db.query(News).all()
+
+        if not all_news:
+            print("No news found to re-translate")
+            db.close()
+            return
+
+        translator = Translator()
+        count = 0
+        for news in all_news:
+            try:
+                is_chinese = any('\u4e00' <= c <= '\u9fff' for c in news.title)
+                if is_chinese:
+                    news.title_zh = news.title
+                    news.translated_text = news.original_text
+                else:
+                    if news.title:
+                        news.title_zh = translator.translate_title(news.title)
+                    if news.original_text:
+                        news.translated_text = translator.translate_text(news.original_text[:2000])
+                count += 1
+                if count % 5 == 0:
+                    db.commit()
+                    print(f"  Re-translated {count}/{len(all_news)}")
+            except Exception as e:
+                print(f"  Re-translation error for '{news.title[:30]}...': {e}")
+                continue
+
+        db.commit()
+        db.close()
+        print(f"[{datetime.now()}] Re-translation completed: {count} items")
+    except Exception as e:
+        print(f"Error in re-translation: {e}")
+
+
+@app.post("/api/admin/retranslate")
+def trigger_retranslate():
+    thread = threading.Thread(target=retranslate_all_news, daemon=True)
+    thread.start()
+    return {"success": True, "message": "Re-translation of all news triggered in background"}
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
