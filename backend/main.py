@@ -58,10 +58,10 @@ def translate_untranslated_news():
                     news.title_zh = news.title
                     news.translated_text = news.original_text
                 else:
-                    if news.title and not any('\u4e00' <= c <= '\u9fff' for c in news.title_zh or ''):
-                        news.title_zh = translator.translate(news.title, 'Chinese')
+                    if news.title:
+                        news.title_zh = translator.translate_title(news.title)
                     if news.original_text:
-                        news.translated_text = translator.translate(news.original_text[:2000], 'Chinese')
+                        news.translated_text = translator.translate_text(news.original_text[:2000])
                 count += 1
                 if count % 5 == 0:
                     db.commit()

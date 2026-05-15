@@ -271,8 +271,8 @@ class NewsScraper:
 
                 if translator and item.get('content'):
                     try:
-                        title_zh = translator.translate(item['title'], 'Chinese')
-                        translated_text = translator.translate(item['content'][:2000], 'Chinese')
+                        title_zh = translator.translate_title(item['title'])
+                        translated_text = translator.translate_text(item['content'][:2000])
                     except Exception as e:
                         print(f"Translation error for '{item['title'][:30]}...': {e}")
 
