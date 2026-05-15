@@ -24,6 +24,16 @@ TEXT_SYSTEM_PROMPT = (
     "6) Output ONLY the translated Chinese text, nothing else."
 )
 
+SUMMARY_SYSTEM_PROMPT = (
+    "You are a professional AI news summarizer. "
+    "Summarize the given text into Simplified Chinese (简体中文) in under 200 characters. "
+    "Rules: 1) Extract the core technical point: what problem was solved, what method was used, what was the result. "
+    "2) Ignore greetings, jokes, meta-comments, and off-topic content. "
+    "3) Use Simplified Chinese only, never Traditional Chinese. "
+    "4) Keep it concise and factual, under 200 characters. "
+    "5) Output ONLY the summary, nothing else."
+)
+
 
 class Translator:
     def __init__(self):
@@ -114,3 +124,16 @@ class Translator:
         translated = self._clean_translation(translated)
         translated = self._validate_text_translation(translated, text)
         return translated
+
+    def summarize_text(self, text: str) -> str:
+        if not text:
+            return ''
+        summarized = self._call_groq(SUMMARY_SYSTEM_PROMPT, text, max_tokens=512)
+        summarized = self._clean_translation(summarized)
+        if summarized:
+            zh_chars = len(re.findall(r'[\u4e00-\u9fff]', summarized))
+            if zh_chars == 0:
+                return ''
+            if len(summarized) > 400:
+                summarized = summarized[:400]
+        return summarized

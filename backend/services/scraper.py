@@ -224,10 +224,6 @@ class NewsScraper:
 
         selected = all_news[:MAX_DAILY_NEWS]
 
-        for item in selected:
-            item.pop('_source_key', None)
-            item.pop('_score', None)
-
         print(f"Scraped {len(all_news)} AI news, selected top {len(selected)} by relevance")
         return selected
 

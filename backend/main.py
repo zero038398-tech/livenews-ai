@@ -13,6 +13,7 @@ from database import get_db, init_db
 from models import News
 from services.scraper import NewsScraper
 from services.translator import Translator
+from config import NEWS_SOURCES
 
 app = FastAPI(title="LiveNews AI API", version="1.0.0")
 
@@ -33,17 +34,12 @@ def fetch_and_translate():
         news_items = scraper.scrape_all()
         print(f"Scraped {len(news_items)} AI-related news items")
 
-        db = next(get_db())
         today = date_type.today()
 
-        db.query(News).filter(News.news_date == today).delete()
-        db.commit()
-        print(f"Cleared today's old news")
-
-        saved_count = 0
-
-        for item in news_items:
+        prepared_items = []
+        for idx, item in enumerate(news_items):
             is_chinese = any('\u4e00' <= c <= '\u9fff' for c in item['title'])
+            source_type = NEWS_SOURCES.get(item.get('_source_key', ''), {}).get('content_type', 'official')
 
             if is_chinese:
                 title_zh = item['title']
@@ -56,7 +52,10 @@ def fetch_and_translate():
                         title_zh = translator.translate_title(item['title'])
                         time.sleep(3)
                     if item.get('content'):
-                        translated_text = translator.translate_text(item['content'][:2000])
+                        if source_type in ('community', 'social', 'video'):
+                            translated_text = translator.summarize_text(item['content'][:3000])
+                        else:
+                            translated_text = translator.translate_text(item['content'][:2000])
                         time.sleep(3)
                 except Exception as e:
                     print(f"  Translation error for '{item['title'][:30]}...': {e}")
@@ -66,32 +65,51 @@ def fetch_and_translate():
                 if not translated_text:
                     translated_text = ''
 
-            news = News(
-                title=item['title'],
-                title_zh=title_zh,
-                original_text=item['content'],
-                translated_text=translated_text,
-                category=item['category']['category'],
-                category_label=item['category']['label'],
-                category_emoji=item['category']['emoji'],
-                source=item['source'],
-                source_url=item['url'],
-                published_at=item['published'],
-                trust_level=item['trust_level'],
-                multi_source_verified=False,
-                ai_warning='预印本提示：此论文来自ArXiv，未经同行评审' if item['source'] == 'ArXiv CS.AI' else None,
-                news_date=today
-            )
-            db.add(news)
-            saved_count += 1
+            prepared_items.append({
+                'title': item['title'],
+                'title_zh': title_zh,
+                'original_text': item['content'],
+                'translated_text': translated_text,
+                'category': item['category']['category'],
+                'category_label': item['category']['label'],
+                'category_emoji': item['category']['emoji'],
+                'source': item['source'],
+                'source_url': item['url'],
+                'published_at': item['published'],
+                'trust_level': item['trust_level'],
+                'ai_warning': '预印本提示：此论文来自ArXiv，未经同行评审' if item['source'] == 'ArXiv CS.AI' else None,
+            })
 
-            if saved_count % 5 == 0:
-                db.commit()
-                print(f"  Saved + translated {saved_count}/{len(news_items)}")
+            print(f"  Prepared {idx+1}/{len(news_items)}: {item['title'][:40]}...")
 
-        db.commit()
-        db.close()
-        print(f"[{datetime.now()}] Done: saved {saved_count} new items with translation")
+        db = next(get_db())
+        try:
+            db.query(News).filter(News.news_date == today).delete()
+            db.commit()
+            print(f"Cleared today's old news")
+
+            for item in prepared_items:
+                news = News(
+                    title=item['title'],
+                    title_zh=item['title_zh'],
+                    original_text=item['original_text'],
+                    translated_text=item['translated_text'],
+                    category=item['category'],
+                    category_label=item['category_label'],
+                    category_emoji=item['category_emoji'],
+                    source=item['source'],
+                    source_url=item['source_url'],
+                    published_at=item['published_at'],
+                    trust_level=item['trust_level'],
+                    multi_source_verified=False,
+                    ai_warning=item['ai_warning'],
+                    news_date=today
+                )
+                db.add(news)
+            db.commit()
+            print(f"[{datetime.now()}] Done: saved {len(prepared_items)} items (all translated first, then replaced)")
+        finally:
+            db.close()
     except Exception as e:
         print(f"Error in fetch_and_translate: {e}")
 
@@ -114,6 +132,7 @@ def translate_untranslated_news():
         for news in untranslated:
             try:
                 is_chinese = any('\u4e00' <= c <= '\u9fff' for c in news.title)
+                is_community = any(kw in news.source.lower() for kw in ['reddit', 'twitter', 'youtube', 'github', 'trending'])
                 if is_chinese:
                     news.title_zh = news.title
                     news.translated_text = news.original_text
@@ -122,7 +141,10 @@ def translate_untranslated_news():
                         news.title_zh = translator.translate_title(news.title)
                         time.sleep(3)
                     if news.original_text:
-                        news.translated_text = translator.translate_text(news.original_text[:2000])
+                        if is_community:
+                            news.translated_text = translator.summarize_text(news.original_text[:3000])
+                        else:
+                            news.translated_text = translator.translate_text(news.original_text[:2000])
                         time.sleep(3)
                 count += 1
                 if count % 5 == 0:
