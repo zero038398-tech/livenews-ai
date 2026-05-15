@@ -39,8 +39,8 @@ function formatParagraphs(text: string): string[] {
     return existingParagraphs.map(p => p.trim())
   }
 
-  const sentenceEnders = /([。！？]|[.!?]\s+[A-Z])/g
-  const withMarkers = cleaned.replace(sentenceEnders, '$1\n')
+  let withMarkers = cleaned.replace(/([。！？])\s*/g, '$1\n')
+  withMarkers = withMarkers.replace(/([.!?])\s+(?=[A-Z])/g, '$1\n')
   const rawSentences = withMarkers.split('\n').filter(s => s.trim())
 
   const paragraphs: string[] = []
@@ -78,7 +78,7 @@ function isTitleHallucinated(title: string, titleZh: string): boolean {
   const enWords = title.split(/\s+/).length
   if (enWords > 0 && zhChars > enWords * 4) return true
   if (titleZh.split('\n').length > 2) return true
-  const listMarkerPattern = /(?:^|\s)(?:[1-9][.)]|[•\-])\s/
+  const listMarkerPattern = /(?:^|\n)\s*(?:[1-9][.)]|[•])\s/
   if (enWords < 10 && listMarkerPattern.test(titleZh)) return true
   return false
 }
