@@ -17,7 +17,6 @@ from config import NEWS_SOURCES
 
 CN_TZ = timezone(timedelta(hours=8))
 
-
 def cn_today():
     return datetime.now(CN_TZ).date()
 
@@ -83,7 +82,7 @@ def fetch_and_translate():
                 'source_url': item['url'],
                 'published_at': item['published'],
                 'trust_level': item['trust_level'],
-                'ai_warning': '预印本提示：此论文来自ArXiv，未经同行评�? if item['source'] == 'ArXiv CS.AI' else None,
+                'ai_warning': '预印本提示：此论文来自ArXiv，未经同行评审' if item['source'] == 'ArXiv CS.AI' else None,
             })
 
             print(f"  Prepared {idx+1}/{len(news_items)}: {item['title'][:40]}...")
@@ -183,7 +182,7 @@ def startup_event():
     print("Scheduler started: fetch+translate every 2h, translate remaining every 1h")
 
     db = next(get_db())
-    today = cn_today()
+    today = date_type.today()
     has_today_news = db.query(News).filter(News.news_date == today).first()
     db.close()
 
@@ -203,7 +202,7 @@ def get_news(
     db: Session = Depends(get_db)
 ):
     query = db.query(News)
-    today = cn_today()
+    today = date_type.today()
 
     if date:
         try:
@@ -226,10 +225,10 @@ def get_news(
             "news": [item.to_dict() for item in news_items],
             "categories": [
                 {"value": "all", "label": "全部", "emoji": "📋"},
-                {"value": "chip", "label": "AI芯片动�?, "emoji": "🔴"},
-                {"value": "tool", "label": "工具与实�?, "emoji": "🟢"},
-                {"value": "industry", "label": "行业动�?, "emoji": "🔵"},
-                {"value": "academic", "label": "学术精�?, "emoji": "🟣"}
+                {"value": "chip", "label": "AI芯片动态", "emoji": "🔴"},
+                {"value": "tool", "label": "工具与实战", "emoji": "🟢"},
+                {"value": "industry", "label": "行业动态", "emoji": "🔵"},
+                {"value": "academic", "label": "学术精选", "emoji": "🟣"}
             ]
         }
     }
@@ -240,7 +239,7 @@ def generate_daily_summary(
     date: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    today = cn_today()
+    today = date_type.today()
     if date:
         try:
             query_date = datetime.strptime(date, '%Y-%m-%d').date()
@@ -256,10 +255,10 @@ def generate_daily_summary(
 
     category_order = ["chip", "industry", "tool", "academic"]
     category_labels = {
-        "chip": "AI芯片动�?,
-        "industry": "行业动�?,
-        "tool": "工具与实�?,
-        "academic": "学术精�?
+        "chip": "AI芯片动态",
+        "industry": "行业动态",
+        "tool": "工具与实战",
+        "academic": "学术精选"
     }
 
     grouped = {}
@@ -298,10 +297,10 @@ def generate_daily_summary(
 def get_categories():
     return [
         {"value": "all", "label": "全部", "emoji": "📋"},
-        {"value": "chip", "label": "AI芯片动�?, "emoji": "🔴"},
-        {"value": "tool", "label": "工具与实�?, "emoji": "🟢"},
-        {"value": "industry", "label": "行业动�?, "emoji": "🔵"},
-        {"value": "academic", "label": "学术精�?, "emoji": "🟣"}
+        {"value": "chip", "label": "AI芯片动态", "emoji": "🔴"},
+        {"value": "tool", "label": "工具与实战", "emoji": "🟢"},
+        {"value": "industry", "label": "行业动态", "emoji": "🔵"},
+        {"value": "academic", "label": "学术精选", "emoji": "🟣"}
     ]
 
 
