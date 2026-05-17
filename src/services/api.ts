@@ -1,7 +1,7 @@
 import axios from 'axios'
 import type { NewsResponse, SummaryResponse } from '../types/news'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://livenews-ai-backend.onrender.com/api'
 
 export const api = {
   getNews: async (date?: string, category?: string): Promise<NewsResponse> => {
