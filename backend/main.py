@@ -196,11 +196,6 @@ def startup_event():
         background_fetch()
 
 
-@app.get("/")
-def root():
-    return {"message": "LiveNews AI API", "version": "1.0.0"}
-
-
 @app.get("/api/news")
 def get_news(
     date: Optional[str] = Query(None),
