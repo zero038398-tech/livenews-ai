@@ -10,6 +10,15 @@ const getChinaDate = (): string => {
   return chinaTime.toISOString().split('T')[0]
 }
 
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() - 1)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function useNews() {
   const [news, setNews] = useState<News[]>([])
   const [categories] = useState<Category[]>([
@@ -20,6 +29,7 @@ export function useNews() {
     { value: 'academic', label: '学术精选', emoji: '🟣' },
   ])
   const [selectedDate, setSelectedDate] = useState(getChinaDate)
+  const [actualDate, setActualDate] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,8 +39,26 @@ export function useNews() {
   const fetchNews = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setActualDate(null)
     try {
-      const response = await api.getNews(selectedDate, selectedCategory)
+      const today = getChinaDate()
+      let response = await api.getNews(selectedDate, selectedCategory)
+
+      if (response.data.news.length === 0 && selectedDate !== today) {
+        response = await api.getNews(today, selectedCategory)
+        if (response.data.news.length > 0) {
+          setActualDate(response.data.date)
+        }
+      }
+
+      if (response.data.news.length === 0 && selectedCategory && selectedCategory !== 'all') {
+        const todayResp = await api.getNews(today)
+        if (todayResp.data.news.length > 0) {
+          setActualDate(todayResp.data.date)
+          response = todayResp
+        }
+      }
+
       setNews(response.data.news)
     } catch (err) {
       setError(err instanceof Error ? err.message : '获取新闻失败')
@@ -66,6 +94,7 @@ export function useNews() {
     news,
     categories,
     selectedDate,
+    actualDate,
     selectedCategory,
     loading,
     error,
