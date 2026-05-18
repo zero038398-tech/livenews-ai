@@ -1,8 +1,16 @@
-[project]
-name = "livenews-ai-backend"
-
-[build]
-command = "pip install -r requirements.txt"
-
-[start]
-command = "python main.py"
+services:
+  - type: web
+    name: livenews-ai-backend
+    runtime: python
+    buildCommand: |
+      pip install -r requirements.txt &&
+      cd .. &&
+      npm install &&
+      npm run build &&
+      cp -r dist backend/static/
+    startCommand: python main.py
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11.0"

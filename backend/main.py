@@ -389,9 +389,9 @@ def fill_history_task():
                 return {'category': cat, 'label': config['label'], 'emoji': config['emoji']}
         return {'category': 'industry', 'label': CATEGORY_CONFIG['industry']['label'], 'emoji': CATEGORY_CONFIG['industry']['emoji']}
     
-    def fetch_arxiv_for_date(target_date, max_results=10):
+    def fetch_arxiv_for_date(target_date, max_results=15):
         articles = []
-        url = f'http://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending'
+        url = f'http://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:cs.AR+OR+cat:cs.NE&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending'
         try:
             resp = requests.get(url, timeout=30)
             if resp.status_code == 200:
@@ -418,40 +418,34 @@ def fill_history_task():
             print(f"    ArXiv error: {e}")
         return articles
     
-    def fetch_hackernews_for_date(target_date, limit=10):
+    def fetch_hackernews_for_date(target_date, limit=15):
         articles = []
         try:
-            resp = requests.get('https://hn.algolia.com/api/v1/search?query=AI&tags=story&numericFilters=created_at_i>0&hitsPerPage=50', timeout=30)
+            ts_start = int(datetime.combine(target_date, datetime.min.time()).replace(tzinfo=CN_TZ).timestamp())
+            ts_end = ts_start + 86400
+            url = f'https://hn.algolia.com/api/v1/search?query=AI+OR+LLM+OR+GPT+OR+machine+learning&tags=story&numericFilters=created_at_i>{ts_start},created_at_i<{ts_end}&hitsPerPage=50'
+            resp = requests.get(url, timeout=30)
             if resp.status_code == 200:
                 data = resp.json()
-                count = 0
-                for hit in data.get('hits', []):
-                    if count >= limit:
-                        break
-                    created_str = hit.get('created_at', '')
-                    if not created_str:
-                        continue
-                    created = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
-                    item_date = created.astimezone(CN_TZ).date()
-                    if item_date != target_date:
-                        continue
+                for hit in data.get('hits', [])[:limit]:
                     title = hit.get('title', '')
                     if not title:
                         continue
-                    url = hit.get('url', '') or f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}"
+                    created_str = hit.get('created_at', '')
+                    created = datetime.fromisoformat(created_str.replace('Z', '+00:00')) if created_str else datetime.now(CN_TZ)
+                    url_hit = hit.get('url', '') or f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}"
                     articles.append({
-                        'title': title, 'content': hit.get('story_text', '')[:1000], 'url': url,
+                        'title': title, 'content': hit.get('story_text', '')[:1000], 'url': url_hit,
                         'source': 'Hacker News', 'published': created, 'trust_level': 'A'
                     })
-                    count += 1
         except Exception as e:
             print(f"    HN error: {e}")
         return articles
     
-    def fetch_reddit_for_date(target_date, subreddit, limit=5):
+    def fetch_reddit_for_date(target_date, subreddit, limit=8):
         articles = []
         try:
-            url = f'https://www.reddit.com/r/{subreddit}/hot/.json?limit=25'
+            url = f'https://www.reddit.com/r/{subreddit}/hot/.json?limit=50'
             headers = {'User-Agent': 'LiveNewsAI/1.0'}
             resp = requests.get(url, headers=headers, timeout=30)
             if resp.status_code == 200:
@@ -485,9 +479,9 @@ def fill_history_task():
             return title, content
         try:
             title_zh = translator.translate_title(title) if title else title
-            time.sleep(3)
+            time.sleep(1)
             text_zh = translator.translate_text(content[:2000]) if content else ''
-            time.sleep(3)
+            time.sleep(1)
             return title_zh or title, text_zh or content
         except:
             return title, content
@@ -508,17 +502,20 @@ def fill_history_task():
         try:
             existing_count = db.query(News).filter(News.news_date == target_date).count()
             print(f"  当前有 {existing_count} 条")
+            if existing_count >= 20:
+                print(f"  已有足够数据，跳过")
+                continue
         finally:
             db.close()
         
         all_articles = []
-        all_articles.extend(fetch_arxiv_for_date(target_date, 10))
-        time.sleep(2)
-        all_articles.extend(fetch_hackernews_for_date(target_date, 10))
-        time.sleep(2)
+        all_articles.extend(fetch_arxiv_for_date(target_date, 15))
+        time.sleep(1)
+        all_articles.extend(fetch_hackernews_for_date(target_date, 15))
+        time.sleep(1)
         for sub in ['LocalLLaMA', 'ChatGPT', 'MachineLearning']:
-            all_articles.extend(fetch_reddit_for_date(target_date, sub, 5))
-            time.sleep(2)
+            all_articles.extend(fetch_reddit_for_date(target_date, sub, 8))
+            time.sleep(1)
         
         print(f"  抓取到 {len(all_articles)} 篇")
         
@@ -549,6 +546,9 @@ def fill_history_task():
                 db.add(news)
                 new_count += 1
                 existing_urls.add(url)
+                if new_count % 5 == 0:
+                    db.commit()
+                    print(f"  已保存 {new_count} 条...")
             db.commit()
             total = db.query(News).filter(News.news_date == target_date).count()
             print(f"  新增 {new_count} 条，共 {total} 条")
