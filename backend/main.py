@@ -389,8 +389,10 @@ def fill_history_task():
                 return {'category': cat, 'label': config['label'], 'emoji': config['emoji']}
         return {'category': 'industry', 'label': CATEGORY_CONFIG['industry']['label'], 'emoji': CATEGORY_CONFIG['industry']['emoji']}
     
-    def fetch_arxiv_for_date(target_date, max_results=15):
+    def fetch_arxiv_for_date(target_date, max_results=30):
         articles = []
+        date_str = target_date.strftime('%Y%m%d')
+        next_date = (target_date + timedelta(days=1)).strftime('%Y%m%d')
         url = f'http://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:cs.AR+OR+cat:cs.NE&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending'
         try:
             resp = requests.get(url, timeout=30)
@@ -416,59 +418,102 @@ def fill_history_task():
                         pass
         except Exception as e:
             print(f"    ArXiv error: {e}")
+        if not articles:
+            try:
+                url2 = f'http://export.arxiv.org/api/query?search_query=all:AI+OR+all:machine+learning+OR+all:LLM+OR+all:transformer&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending'
+                resp2 = requests.get(url2, timeout=30)
+                if resp2.status_code == 200:
+                    root2 = ET.fromstring(resp2.content)
+                    for entry in root2.findall('atom:entry', ns):
+                        try:
+                            published_str = entry.find('atom:published', ns).text
+                            published = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
+                            item_date = published.astimezone(CN_TZ).date()
+                            if item_date != target_date:
+                                continue
+                            title = entry.find('atom:title', ns).text.replace('\n', ' ').strip()
+                            summary = entry.find('atom:summary', ns).text.replace('\n', ' ').strip()[:1000]
+                            link = entry.find('atom:id', ns).text
+                            if any(a['url'] == link for a in articles):
+                                continue
+                            articles.append({
+                                'title': title, 'content': summary, 'url': link,
+                                'source': 'ArXiv', 'published': published, 'trust_level': 'S'
+                            })
+                        except:
+                            pass
+            except Exception as e:
+                print(f"    ArXiv fallback error: {e}")
         return articles
     
-    def fetch_hackernews_for_date(target_date, limit=15):
+    def fetch_hackernews_for_date(target_date, limit=20):
         articles = []
         try:
             ts_start = int(datetime.combine(target_date, datetime.min.time()).replace(tzinfo=CN_TZ).timestamp())
             ts_end = ts_start + 86400
-            url = f'https://hn.algolia.com/api/v1/search?query=AI+OR+LLM+OR+GPT+OR+machine+learning&tags=story&numericFilters=created_at_i>{ts_start},created_at_i<{ts_end}&hitsPerPage=50'
-            resp = requests.get(url, timeout=30)
-            if resp.status_code == 200:
-                data = resp.json()
-                for hit in data.get('hits', [])[:limit]:
-                    title = hit.get('title', '')
-                    if not title:
-                        continue
-                    created_str = hit.get('created_at', '')
-                    created = datetime.fromisoformat(created_str.replace('Z', '+00:00')) if created_str else datetime.now(CN_TZ)
-                    url_hit = hit.get('url', '') or f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}"
-                    articles.append({
-                        'title': title, 'content': hit.get('story_text', '')[:1000], 'url': url_hit,
-                        'source': 'Hacker News', 'published': created, 'trust_level': 'A'
-                    })
+            queries = ['AI', 'LLM', 'GPT', 'machine learning', 'deep learning']
+            seen_ids = set()
+            for query in queries:
+                try:
+                    url = f'https://hn.algolia.com/api/v1/search?query={query}&tags=story&numericFilters=created_at_i>{ts_start},created_at_i<{ts_end}&hitsPerPage=50'
+                    resp = requests.get(url, timeout=30)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        for hit in data.get('hits', []):
+                            obj_id = hit.get('objectID', '')
+                            if obj_id in seen_ids:
+                                continue
+                            title = hit.get('title', '')
+                            if not title:
+                                continue
+                            seen_ids.add(obj_id)
+                            created_str = hit.get('created_at', '')
+                            created = datetime.fromisoformat(created_str.replace('Z', '+00:00')) if created_str else datetime.now(CN_TZ)
+                            url_hit = hit.get('url', '') or f"https://news.ycombinator.com/item?id={obj_id}"
+                            articles.append({
+                                'title': title, 'content': hit.get('story_text', '')[:1000], 'url': url_hit,
+                                'source': 'Hacker News', 'published': created, 'trust_level': 'A'
+                            })
+                    time.sleep(0.5)
+                except:
+                    pass
+            articles = articles[:limit]
         except Exception as e:
             print(f"    HN error: {e}")
         return articles
     
-    def fetch_reddit_for_date(target_date, subreddit, limit=8):
+    def fetch_reddit_for_date(target_date, subreddit, limit=10):
         articles = []
         try:
-            url = f'https://www.reddit.com/r/{subreddit}/hot/.json?limit=50'
-            headers = {'User-Agent': 'LiveNewsAI/1.0'}
-            resp = requests.get(url, headers=headers, timeout=30)
-            if resp.status_code == 200:
-                data = resp.json()
-                count = 0
-                for post in data.get('data', {}).get('children', []):
-                    if count >= limit:
-                        break
-                    post_data = post.get('data', {})
-                    created_utc = post_data.get('created_utc', 0)
-                    created = datetime.fromtimestamp(created_utc, tz=CN_TZ)
-                    item_date = created.date()
-                    if item_date != target_date:
-                        continue
-                    title = post_data.get('title', '')
-                    if not title:
-                        continue
-                    articles.append({
-                        'title': title, 'content': post_data.get('selftext', '')[:1000],
-                        'url': f"https://reddit.com{post_data.get('permalink', '')}",
-                        'source': f'Reddit {subreddit}', 'published': created, 'trust_level': 'A'
-                    })
-                    count += 1
+            for endpoint in ['hot', 'new', 'top']:
+                url = f'https://www.reddit.com/r/{subreddit}/{endpoint}/.json?limit=100&t=week'
+                headers = {'User-Agent': 'LiveNewsAI/1.0'}
+                resp = requests.get(url, headers=headers, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for post in data.get('data', {}).get('children', []):
+                        post_data = post.get('data', {})
+                        created_utc = post_data.get('created_utc', 0)
+                        created = datetime.fromtimestamp(created_utc, tz=CN_TZ)
+                        item_date = created.date()
+                        if item_date != target_date:
+                            continue
+                        title = post_data.get('title', '')
+                        if not title:
+                            continue
+                        permalink = f"https://reddit.com{post_data.get('permalink', '')}"
+                        if any(a['url'] == permalink for a in articles):
+                            continue
+                        articles.append({
+                            'title': title, 'content': post_data.get('selftext', '')[:1000],
+                            'url': permalink,
+                            'source': f'Reddit {subreddit}', 'published': created, 'trust_level': 'A'
+                        })
+                        if len(articles) >= limit:
+                            break
+                time.sleep(1)
+                if len(articles) >= limit:
+                    break
         except Exception as e:
             print(f"    Reddit error: {e}")
         return articles
@@ -509,12 +554,12 @@ def fill_history_task():
             db.close()
         
         all_articles = []
-        all_articles.extend(fetch_arxiv_for_date(target_date, 15))
+        all_articles.extend(fetch_arxiv_for_date(target_date, 30))
         time.sleep(1)
-        all_articles.extend(fetch_hackernews_for_date(target_date, 15))
+        all_articles.extend(fetch_hackernews_for_date(target_date, 20))
         time.sleep(1)
         for sub in ['LocalLLaMA', 'ChatGPT', 'MachineLearning']:
-            all_articles.extend(fetch_reddit_for_date(target_date, sub, 8))
+            all_articles.extend(fetch_reddit_for_date(target_date, sub, 10))
             time.sleep(1)
         
         print(f"  抓取到 {len(all_articles)} 篇")
