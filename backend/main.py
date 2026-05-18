@@ -42,6 +42,9 @@ def fetch_and_translate(target_date=None):
         news_items = scraper.scrape_all()
         print(f"Scraped {len(news_items)} AI-related news items")
 
+        if target_date is None:
+            target_date = cn_today()
+
         prepared_items = []
         for idx, item in enumerate(news_items):
             is_chinese = any('\u4e00' <= c <= '\u9fff' for c in item['title'])
@@ -71,12 +74,6 @@ def fetch_and_translate(target_date=None):
                 if not translated_text:
                     translated_text = ''
 
-            published_at = item['published']
-            if isinstance(published_at, datetime):
-                item_date = published_at.astimezone(CN_TZ).date()
-            else:
-                item_date = cn_today()
-
             prepared_items.append({
                 'title': item['title'],
                 'title_zh': title_zh,
@@ -87,22 +84,22 @@ def fetch_and_translate(target_date=None):
                 'category_emoji': item['category']['emoji'],
                 'source': item['source'],
                 'source_url': item['url'],
-                'published_at': published_at,
+                'published_at': item['published'],
                 'trust_level': item['trust_level'],
                 'ai_warning': '预印本提示：此论文来自ArXiv，未经同行评审' if item['source'] == 'ArXiv CS.AI' else None,
-                'news_date': item_date,
+                'news_date': target_date,
             })
 
-            print(f"  Prepared {idx+1}/{len(news_items)}: [{item_date}] {item['title'][:40]}...")
+            print(f"  Prepared {idx+1}/{len(news_items)}: {item['title'][:40]}...")
 
         db = next(get_db())
         try:
-            all_urls = set(
-                row[0] for row in db.query(News.source_url).all()
+            existing_urls = set(
+                row[0] for row in db.query(News.source_url).filter(News.news_date == target_date).all()
             )
             new_count = 0
             for item in prepared_items:
-                if item['source_url'] in all_urls:
+                if item['source_url'] in existing_urls:
                     continue
                 news = News(
                     title=item['title'],
@@ -122,9 +119,8 @@ def fetch_and_translate(target_date=None):
                 )
                 db.add(news)
                 new_count += 1
-                all_urls.add(item['source_url'])
             db.commit()
-            print(f"[{datetime.now()}] Done: saved {new_count} new items (skipped {len(prepared_items) - new_count} duplicates)")
+            print(f"[{datetime.now()}] Done: saved {new_count} new items for {target_date} (skipped {len(prepared_items) - new_count} duplicates)")
         finally:
             db.close()
     except Exception as e:
