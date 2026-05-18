@@ -42,6 +42,9 @@ def fetch_and_translate(target_date=None):
         news_items = scraper.scrape_all()
         print(f"Scraped {len(news_items)} AI-related news items")
 
+        if target_date is None:
+            target_date = cn_today()
+
         prepared_items = []
         for idx, item in enumerate(news_items):
             is_chinese = any('\u4e00' <= c <= '\u9fff' for c in item['title'])
@@ -71,13 +74,6 @@ def fetch_and_translate(target_date=None):
                 if not translated_text:
                     translated_text = ''
 
-            # 根据发布时间计算news_date（中国时区）
-            published_at = item['published']
-            if isinstance(published_at, datetime):
-                item_date = published_at.astimezone(CN_TZ).date()
-            else:
-                item_date = cn_today()
-
             prepared_items.append({
                 'title': item['title'],
                 'title_zh': title_zh,
@@ -88,56 +84,43 @@ def fetch_and_translate(target_date=None):
                 'category_emoji': item['category']['emoji'],
                 'source': item['source'],
                 'source_url': item['url'],
-                'published_at': published_at,
+                'published_at': item['published'],
                 'trust_level': item['trust_level'],
                 'ai_warning': '预印本提示：此论文来自ArXiv，未经同行评审' if item['source'] == 'ArXiv CS.AI' else None,
-                'news_date': item_date,
+                'news_date': target_date,
             })
 
-            print(f"  Prepared {idx+1}/{len(news_items)}: [{item_date}] {item['title'][:40]}...")
+            print(f"  Prepared {idx+1}/{len(news_items)}: {item['title'][:40]}...")
 
         db = next(get_db())
         try:
-            # 按日期分组处理，避免全局去重逻辑问题
-            by_date = {}
-            for item in prepared_items:
-                d = item['news_date']
-                if d not in by_date:
-                    by_date[d] = []
-                by_date[d].append(item)
-            
+            existing_urls = set(
+                row[0] for row in db.query(News.source_url).filter(News.news_date == target_date).all()
+            )
             new_count = 0
-            for d, items in by_date.items():
-                # 获取该日期已存在的URL
-                existing_urls = set(
-                    row[0] for row in db.query(News.source_url).filter(News.news_date == d).all()
+            for item in prepared_items:
+                if item['source_url'] in existing_urls:
+                    continue
+                news = News(
+                    title=item['title'],
+                    title_zh=item['title_zh'],
+                    original_text=item['original_text'],
+                    translated_text=item['translated_text'],
+                    category=item['category'],
+                    category_label=item['category_label'],
+                    category_emoji=item['category_emoji'],
+                    source=item['source'],
+                    source_url=item['source_url'],
+                    published_at=item['published_at'],
+                    trust_level=item['trust_level'],
+                    multi_source_verified=False,
+                    ai_warning=item['ai_warning'],
+                    news_date=item['news_date']
                 )
-                
-                for item in items:
-                    if item['source_url'] in existing_urls:
-                        continue
-                    news = News(
-                        title=item['title'],
-                        title_zh=item['title_zh'],
-                        original_text=item['original_text'],
-                        translated_text=item['translated_text'],
-                        category=item['category'],
-                        category_label=item['category_label'],
-                        category_emoji=item['category_emoji'],
-                        source=item['source'],
-                        source_url=item['source_url'],
-                        published_at=item['published_at'],
-                        trust_level=item['trust_level'],
-                        multi_source_verified=False,
-                        ai_warning=item['ai_warning'],
-                        news_date=item['news_date']
-                    )
-                    db.add(news)
-                    new_count += 1
-                    existing_urls.add(item['source_url'])
-            
+                db.add(news)
+                new_count += 1
             db.commit()
-            print(f"[{datetime.now()}] Done: saved {new_count} new items across {len(by_date)} dates")
+            print(f"[{datetime.now()}] Done: saved {new_count} new items for {target_date}")
         finally:
             db.close()
     except Exception as e:
@@ -377,6 +360,209 @@ def trigger_reset():
     thread = threading.Thread(target=reset_and_refetch, daemon=True)
     thread.start()
     return {"success": True, "message": "Reset and re-fetch triggered in background"}
+
+
+def fill_history_task():
+    import time
+    from datetime import datetime, timedelta, timezone
+    import requests
+    import feedparser
+    from database import SessionLocal, init_db
+    from models import News
+    from services.translator import Translator
+    from config import CATEGORY_CONFIG, NOISE_KEYWORDS
+    
+    CN_TZ = timezone(timedelta(hours=8))
+    
+    def classify_category(title, content=''):
+        text = (title + ' ' + content).lower()
+        for kw in NOISE_KEYWORDS:
+            if kw.lower() in text:
+                return None
+        for cat, config in CATEGORY_CONFIG.items():
+            for kw in config.get('strict_keywords', []):
+                if kw.lower() in text:
+                    return {'category': cat, 'label': config['label'], 'emoji': config['emoji']}
+        for cat, config in CATEGORY_CONFIG.items():
+            matches = sum(1 for kw in config['keywords'] if kw.lower() in text)
+            if matches >= 2:
+                return {'category': cat, 'label': config['label'], 'emoji': config['emoji']}
+        return {'category': 'industry', 'label': CATEGORY_CONFIG['industry']['label'], 'emoji': CATEGORY_CONFIG['industry']['emoji']}
+    
+    def fetch_arxiv_for_date(target_date, max_results=10):
+        articles = []
+        url = f'http://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL&start=0&max_results={max_results}&sortBy=submittedDate&sortOrder=descending'
+        try:
+            resp = requests.get(url, timeout=30)
+            if resp.status_code == 200:
+                import xml.etree.ElementTree as ET
+                root = ET.fromstring(resp.content)
+                ns = {'atom': 'http://www.w3.org/2005/Atom'}
+                for entry in root.findall('atom:entry', ns):
+                    try:
+                        published_str = entry.find('atom:published', ns).text
+                        published = datetime.fromisoformat(published_str.replace('Z', '+00:00'))
+                        item_date = published.astimezone(CN_TZ).date()
+                        if item_date != target_date:
+                            continue
+                        title = entry.find('atom:title', ns).text.replace('\n', ' ').strip()
+                        summary = entry.find('atom:summary', ns).text.replace('\n', ' ').strip()[:1000]
+                        link = entry.find('atom:id', ns).text
+                        articles.append({
+                            'title': title, 'content': summary, 'url': link,
+                            'source': 'ArXiv CS.AI', 'published': published, 'trust_level': 'S'
+                        })
+                    except:
+                        pass
+        except Exception as e:
+            print(f"    ArXiv error: {e}")
+        return articles
+    
+    def fetch_hackernews_for_date(target_date, limit=10):
+        articles = []
+        try:
+            resp = requests.get('https://hn.algolia.com/api/v1/search?query=AI&tags=story&numericFilters=created_at_i>0&hitsPerPage=50', timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                count = 0
+                for hit in data.get('hits', []):
+                    if count >= limit:
+                        break
+                    created_str = hit.get('created_at', '')
+                    if not created_str:
+                        continue
+                    created = datetime.fromisoformat(created_str.replace('Z', '+00:00'))
+                    item_date = created.astimezone(CN_TZ).date()
+                    if item_date != target_date:
+                        continue
+                    title = hit.get('title', '')
+                    if not title:
+                        continue
+                    url = hit.get('url', '') or f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}"
+                    articles.append({
+                        'title': title, 'content': hit.get('story_text', '')[:1000], 'url': url,
+                        'source': 'Hacker News', 'published': created, 'trust_level': 'A'
+                    })
+                    count += 1
+        except Exception as e:
+            print(f"    HN error: {e}")
+        return articles
+    
+    def fetch_reddit_for_date(target_date, subreddit, limit=5):
+        articles = []
+        try:
+            url = f'https://www.reddit.com/r/{subreddit}/hot/.json?limit=25'
+            headers = {'User-Agent': 'LiveNewsAI/1.0'}
+            resp = requests.get(url, headers=headers, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                count = 0
+                for post in data.get('data', {}).get('children', []):
+                    if count >= limit:
+                        break
+                    post_data = post.get('data', {})
+                    created_utc = post_data.get('created_utc', 0)
+                    created = datetime.fromtimestamp(created_utc, tz=CN_TZ)
+                    item_date = created.date()
+                    if item_date != target_date:
+                        continue
+                    title = post_data.get('title', '')
+                    if not title:
+                        continue
+                    articles.append({
+                        'title': title, 'content': post_data.get('selftext', '')[:1000],
+                        'url': f"https://reddit.com{post_data.get('permalink', '')}",
+                        'source': f'Reddit {subreddit}', 'published': created, 'trust_level': 'A'
+                    })
+                    count += 1
+        except Exception as e:
+            print(f"    Reddit error: {e}")
+        return articles
+    
+    def translate_item(title, content, translator):
+        is_chinese = any('\u4e00' <= c <= '\u9fff' for c in title)
+        if is_chinese:
+            return title, content
+        try:
+            title_zh = translator.translate_title(title) if title else title
+            time.sleep(3)
+            text_zh = translator.translate_text(content[:2000]) if content else ''
+            time.sleep(3)
+            return title_zh or title, text_zh or content
+        except:
+            return title, content
+    
+    print("=" * 60)
+    print("历史数据补全任务开始")
+    print("=" * 60)
+    
+    init_db()
+    translator = Translator()
+    today = datetime.now(CN_TZ).date()
+    dates_to_fill = [today - timedelta(days=i) for i in range(1, 8)]
+    
+    for target_date in dates_to_fill:
+        print(f"\n处理日期: {target_date}")
+        
+        db = SessionLocal()
+        try:
+            existing_count = db.query(News).filter(News.news_date == target_date).count()
+            print(f"  当前有 {existing_count} 条")
+        finally:
+            db.close()
+        
+        all_articles = []
+        all_articles.extend(fetch_arxiv_for_date(target_date, 10))
+        time.sleep(2)
+        all_articles.extend(fetch_hackernews_for_date(target_date, 10))
+        time.sleep(2)
+        for sub in ['LocalLLaMA', 'ChatGPT', 'MachineLearning']:
+            all_articles.extend(fetch_reddit_for_date(target_date, sub, 5))
+            time.sleep(2)
+        
+        print(f"  抓取到 {len(all_articles)} 篇")
+        
+        if not all_articles:
+            continue
+        
+        db = SessionLocal()
+        try:
+            existing_urls = set(row[0] for row in db.query(News.source_url).filter(News.news_date == target_date).all())
+            new_count = 0
+            for article in all_articles:
+                url = article.get('url', '')
+                if url in existing_urls:
+                    continue
+                title_zh, translated_text = translate_item(article.get('title', ''), article.get('content', ''), translator)
+                cat_info = classify_category(article.get('title', ''), article.get('content', ''))
+                if not cat_info:
+                    continue
+                news = News(
+                    title=article.get('title', ''), title_zh=title_zh,
+                    original_text=article.get('content', ''), translated_text=translated_text,
+                    category=cat_info['category'], category_label=cat_info['label'], category_emoji=cat_info['emoji'],
+                    source=article.get('source', 'Unknown'), source_url=url,
+                    published_at=article.get('published', datetime.now(CN_TZ)),
+                    trust_level=article.get('trust_level', 'B'),
+                    multi_source_verified=False, ai_warning=None, news_date=target_date
+                )
+                db.add(news)
+                new_count += 1
+                existing_urls.add(url)
+            db.commit()
+            total = db.query(News).filter(News.news_date == target_date).count()
+            print(f"  新增 {new_count} 条，共 {total} 条")
+        finally:
+            db.close()
+    
+    print("\n历史数据补全完成!")
+
+
+@app.post("/api/admin/fill-history")
+def trigger_fill_history():
+    thread = threading.Thread(target=fill_history_task, daemon=True)
+    thread.start()
+    return {"success": True, "message": "历史数据补全任务已在后台启动，请等待..."}
 
 
 STATIC_DIR = Path(__file__).parent / "static"
