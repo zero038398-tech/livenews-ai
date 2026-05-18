@@ -342,6 +342,10 @@ def trigger_reset():
 STATIC_DIR = Path(__file__).parent / "static"
 
 if STATIC_DIR.is_dir():
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(STATIC_DIR / "index.html")
+
     app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 

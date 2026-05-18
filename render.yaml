@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: livenews-ai-backend
+    runtime: python
+    rootDir: .
+    buildCommand: pip install -r backend/requirements.txt && npm install && npm run build && cp -r dist backend/static/
+    startCommand: cd backend && python main.py
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: NODE_VERSION
+        value: "18"
