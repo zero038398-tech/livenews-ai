@@ -8,10 +8,112 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="/assets/index-u7_7G3p_.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-o9yFVKdj.css">
+    
+    <!-- 纯CSS Loading - 不需要任何JS就能显示 -->
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        min-height: 100vh;
+        color: #e2e8f0;
+      }
+      
+      #initial-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 2rem;
+        transition: opacity 0.5s ease;
+      }
+      
+      #initial-loading.hidden {
+        opacity: 0;
+        pointer-events: none;
+        position: absolute;
+      }
+      
+      .loading-logo {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 2rem;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      
+      .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid #334155;
+        border-top-color: #6366f1;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1.5rem;
+      }
+      
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      
+      .loading-text {
+        font-size: 1.125rem;
+        color: #94a3b8;
+        text-align: center;
+        margin-bottom: 0.5rem;
+      }
+      
+      .loading-hint {
+        font-size: 0.875rem;
+        color: #64748b;
+        text-align: center;
+      }
+      
+      .progress-bar {
+        width: 200px;
+        height: 4px;
+        background: #334155;
+        border-radius: 2px;
+        margin-top: 1rem;
+        overflow: hidden;
+      }
+      
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+        animation: progress 2s ease-in-out infinite;
+        width: 30%;
+      }
+      
+      @keyframes progress {
+        0%, 100% { transform: translateX(-100%); }
+        50% { transform: translateX(400%); }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-n_O93gv5.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-RS71YWzG.css">
   </head>
   <body>
+    <!-- 初始Loading - 在React加载前显示 -->
+    <div id="initial-loading">
+      <div class="loading-logo">LiveNews AI</div>
+      <div class="spinner"></div>
+      <div class="loading-text">正在连接服务器...</div>
+      <div class="loading-hint">Render冷启动中，通常需要1-2分钟</div>
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+    </div>
+    
+    <!-- React挂载点 -->
     <div id="root"></div>
   </body>
 </html>

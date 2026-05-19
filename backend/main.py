@@ -192,6 +192,21 @@ def cleanup_old_news():
         print(f"Error cleaning up old news: {e}")
 
 
+def smart_supplement():
+    try:
+        db = next(get_db())
+        today = cn_today()
+        today_count = db.query(News).filter(News.news_date == today).count()
+        db.close()
+        if today_count < 10:
+            print(f"[{datetime.now()}] Today has only {today_count} news, triggering supplement fetch...")
+            background_fetch()
+        else:
+            print(f"[{datetime.now()}] Today has {today_count} news, no supplement needed")
+    except Exception as e:
+        print(f"Error in smart_supplement: {e}")
+
+
 @app.on_event("startup")
 def startup_event():
     init_db()
@@ -200,16 +215,12 @@ def startup_event():
     scheduler.add_job(fetch_and_translate, 'interval', hours=2, id='fetch_news')
     scheduler.add_job(translate_untranslated_news, 'interval', hours=1, id='translate_news')
     scheduler.add_job(cleanup_old_news, 'interval', hours=24, id='cleanup_news')
+    scheduler.add_job(smart_supplement, 'interval', minutes=30, id='smart_supplement')
     scheduler.start()
-    print("Scheduler started: fetch+translate every 2h, translate remaining every 1h, cleanup every 24h")
+    print("Scheduler started: fetch+translate every 2h, translate every 1h, cleanup every 24h, supplement every 30min")
 
-    db = next(get_db())
-    today = cn_today()
-    has_today_news = db.query(News).filter(News.news_date == today).first()
-    db.close()
-
-    if not has_today_news:
-        background_fetch()
+    print(f"[{datetime.now()}] Startup: triggering initial fetch for today...")
+    background_fetch()
 
 
 @app.get("/api/news")
