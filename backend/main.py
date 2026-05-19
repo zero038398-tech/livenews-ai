@@ -621,29 +621,42 @@ def trigger_fill_history():
 
 
 STATIC_DIR = Path(__file__).parent / "static"
+DIST_DIR = Path(__file__).parent.parent / "dist"
 
-print(f"[DEBUG] __file__ = {__file__}")
-print(f"[DEBUG] STATIC_DIR = {STATIC_DIR}")
-print(f"[DEBUG] STATIC_DIR.exists() = {STATIC_DIR.exists()}")
-print(f"[DEBUG] STATIC_DIR.is_dir() = {STATIC_DIR.is_dir()}")
-if STATIC_DIR.is_dir():
-    print(f"[DEBUG] Contents: {list(STATIC_DIR.iterdir())}")
-    index_path = STATIC_DIR / "index.html"
-    print(f"[DEBUG] index.html exists: {index_path.exists()}")
+def find_static_dir():
+    if STATIC_DIR.is_dir() and (STATIC_DIR / "index.html").exists():
+        print(f"[STATIC] Using backend/static: {STATIC_DIR}")
+        return STATIC_DIR
+    if DIST_DIR.is_dir() and (DIST_DIR / "index.html").exists():
+        print(f"[STATIC] Using dist: {DIST_DIR}")
+        return DIST_DIR
+    print(f"[STATIC] WARNING: No static files found!")
+    print(f"[STATIC]   backend/static exists: {STATIC_DIR.is_dir()}")
+    print(f"[STATIC]   dist exists: {DIST_DIR.is_dir()}")
+    if STATIC_DIR.is_dir():
+        print(f"[STATIC]   backend/static contents: {list(STATIC_DIR.iterdir())}")
+    if DIST_DIR.is_dir():
+        print(f"[STATIC]   dist contents: {list(DIST_DIR.iterdir())}")
+    return None
+
+SERVE_DIR = find_static_dir()
 
 @app.get("/")
 async def serve_index():
-    index_path = STATIC_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
+    if SERVE_DIR:
+        index_path = SERVE_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
     return {
         "message": "LiveNews AI API",
         "version": "1.0.0",
         "hint": "Frontend not built yet",
         "debug": {
             "static_dir": str(STATIC_DIR),
-            "exists": STATIC_DIR.exists(),
-            "index_exists": index_path.exists(),
+            "dist_dir": str(DIST_DIR),
+            "serve_dir": str(SERVE_DIR) if SERVE_DIR else None,
+            "static_exists": STATIC_DIR.is_dir(),
+            "dist_exists": DIST_DIR.is_dir(),
             "cwd": str(Path.cwd()),
         }
     }
@@ -651,12 +664,13 @@ async def serve_index():
 
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
-    static_file = STATIC_DIR / full_path
-    if static_file.is_file():
-        return FileResponse(static_file)
-    index_path = STATIC_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
+    if SERVE_DIR:
+        static_file = SERVE_DIR / full_path
+        if static_file.is_file():
+            return FileResponse(static_file)
+        index_path = SERVE_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
     return {"error": "Not found"}
 
 
