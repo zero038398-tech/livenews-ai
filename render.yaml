@@ -3,7 +3,7 @@ services:
     name: livenews-ai-backend
     runtime: python
     rootDir: .
-    buildCommand: pip install -r backend/requirements.txt && npm install && npm run build && cp -r dist backend/static/
+    buildCommand: pip install -r backend/requirements.txt && npm install && npm run build && rm -rf backend/static && cp -r dist backend/static
     startCommand: cd backend && python main.py
     envVars:
       - key: GROQ_API_KEY

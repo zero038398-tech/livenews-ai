@@ -5,7 +5,6 @@ import time
 from pathlib import Path
 from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -623,12 +622,23 @@ def trigger_fill_history():
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-if STATIC_DIR.is_dir():
-    @app.get("/")
-    async def serve_index():
-        return FileResponse(STATIC_DIR / "index.html")
+@app.get("/")
+async def serve_index():
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    return {"message": "LiveNews AI API", "version": "1.0.0", "hint": "Frontend not built yet"}
 
-    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    static_file = STATIC_DIR / full_path
+    if static_file.is_file():
+        return FileResponse(static_file)
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    return {"error": "Not found"}
 
 
 if __name__ == "__main__":

@@ -7,7 +7,8 @@ services:
       cd .. &&
       npm install &&
       npm run build &&
-      cp -r dist backend/static/
+      rm -rf backend/static &&
+      cp -r dist backend/static
     startCommand: python main.py
     envVars:
       - key: GROQ_API_KEY

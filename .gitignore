@@ -13,3 +13,4 @@ backend/verify_news_count.py
 backend/verify_dates.ps1
 backend/check_db.py
 backend/run_fill_history.py
+backend/static/
