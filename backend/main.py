@@ -647,19 +647,7 @@ async def serve_index():
         index_path = SERVE_DIR / "index.html"
         if index_path.exists():
             return FileResponse(index_path)
-    return {
-        "message": "LiveNews AI API",
-        "version": "1.0.0",
-        "hint": "Frontend not built yet",
-        "debug": {
-            "static_dir": str(STATIC_DIR),
-            "dist_dir": str(DIST_DIR),
-            "serve_dir": str(SERVE_DIR) if SERVE_DIR else None,
-            "static_exists": STATIC_DIR.is_dir(),
-            "dist_exists": DIST_DIR.is_dir(),
-            "cwd": str(Path.cwd()),
-        }
-    }
+    return {"message": "LiveNews AI API", "version": "1.0.0"}
 
 
 @app.get("/{full_path:path}")
